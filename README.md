@@ -3,6 +3,10 @@
 This collection of scripts uses media data logged into Logstash / Elasticsearch
 to compute download and user statistics.
 
+We've made this repo public so that we can share the methodology we're using to
+compute the stats, but these scripts themselves won't really be any use to you
+without access to our production data.
+
 ## Requirements
 
 * Node.js 0.10
