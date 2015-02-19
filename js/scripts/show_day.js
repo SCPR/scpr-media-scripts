@@ -72,6 +72,10 @@ DayPuller = (function(_super) {
     debug("Indices is ", indices);
     filters = [
       {
+        term: {
+          "nginx_host.raw": "media.scpr.org"
+        }
+      }, {
         terms: {
           qvia: via
         }

@@ -64,6 +64,8 @@ class DayPuller extends require("stream").Transform
         debug "Indices is ", indices
 
         filters = [
+            term: { "nginx_host.raw": "media.scpr.org" }
+        ,
             terms: { qvia: via }
         ,
             range: { bytes_sent: { gte: 8192 } }
