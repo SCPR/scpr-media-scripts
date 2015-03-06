@@ -15,9 +15,12 @@ argv = require('yargs')
         end:        "End Date"
         zone:       "Timezone"
         verbose:    "Show Debugging Logs"
-    .boolean(['verbose'])
+        bots:       "Include Known Bot Traffic?"
+        ua:         "Limit User Agents"
+    .boolean(['verbose','bots'])
     .default
         verbose:    false
+        bots:       false
         type:       "podcast"
         zone:       "America/Los_Angeles"
     .argv
@@ -28,7 +31,7 @@ if argv.verbose
 
 zone = tz(require("timezone/#{argv.zone}"))
 
-es = new elasticsearch.Client host:"logstash.i.scprdev.org:9200"
+es = new elasticsearch.Client host:"es-scpr-logstash.service.consul:9200"
 
 start_date  = zone(argv.start,argv.zone)
 end_date    = zone(argv.end,argv.zone)
@@ -75,6 +78,18 @@ class DayPuller extends require("stream").Transform
                     gte:    tz(date,"%Y-%m-%dT%H:%M")
                     lt:     tz(tomorrow,"%Y-%m-%dT%H:%M")
         ]
+
+        if !argv.bots
+            filters.push
+                not:
+                    terms:
+                        "clientip.raw": ["217.156.156.69"]
+
+        if argv.ua
+            filters.push
+                prefix:
+                    "agent.raw": argv.ua
+
 
         if argv.show
             filters.push term:{ "qcontext.raw":argv.show }
