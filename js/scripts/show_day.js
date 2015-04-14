@@ -23,8 +23,10 @@ argv = require('yargs').demand(['start', 'end']).describe({
   zone: "Timezone",
   verbose: "Show Debugging Logs",
   bots: "Include Known Bot Traffic?",
-  ua: "Limit User Agents"
+  ua: "Limit User Agents",
+  prefix: "Index Prefix"
 }).boolean(['verbose', 'bots'])["default"]({
+  prefix: "logstash",
   verbose: false,
   bots: false,
   type: "podcast",
@@ -71,7 +73,7 @@ DayPuller = (function(_super) {
     var body, filters, indices, tomorrow;
     debug("Running " + (zone(date, argv.zone, "%Y.%m.%d")));
     tomorrow = tz(date, "+1 day");
-    indices = ["logstash-" + (zone(date, argv.zone, "%Y.%m.%d")), "logstash-" + (zone(tomorrow, argv.zone, "%Y.%m.%d"))];
+    indices = ["" + argv.prefix + "-" + (zone(date, argv.zone, "%Y.%m.%d")), "" + argv.prefix + "-" + (zone(tomorrow, argv.zone, "%Y.%m.%d"))];
     debug("Indices is ", indices);
     filters = [
       {
