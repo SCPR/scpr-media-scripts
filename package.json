@@ -1,13 +1,13 @@
 {
   "name": "scpr-media-scripts",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Pull media stats from Elasticsearch / Logstash",
   "main": "index.js",
   "dependencies": {
     "csv": "^0.4.1",
     "elasticsearch": "^3.0.1",
     "timezone": "^0.0.38",
-    "yargs": "^1.3.3",
+    "yargs": "^3.9.0",
     "underscore": "~1.7.0",
     "debug": "~2.1.1"
   },
@@ -25,6 +25,8 @@
   "license": "BSD",
   "private": true,
   "bin": {
-    "scpr-media-show-day": "./runner-show-day"
+    "scpr-media-show-day": "./runner-show-day",
+    "scpr-media-show-episodes": "./runner-show-episodes",
+    "scpr-media-show-episodes-by-hour": "./runner-show-episodes-by-hour"
   }
 }

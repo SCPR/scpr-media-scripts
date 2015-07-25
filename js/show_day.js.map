@@ -1,7 +1,7 @@
 {
   "version": 3,
   "file": "show_day.js",
-  "sourceRoot": "../../scripts/",
+  "sourceRoot": "../scripts/",
   "sources": [
     "show_day.coffee"
   ],

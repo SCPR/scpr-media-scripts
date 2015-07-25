@@ -4,4 +4,4 @@ var path = require('path');
 var fs   = require('fs');
 var src  = path.dirname(fs.realpathSync(__filename));
 
-require(src + "/js/show_day.js")
+require(src + "/js/show_episodes_by_hour.js")

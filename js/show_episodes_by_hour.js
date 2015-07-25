@@ -1,4 +1,4 @@
-var AllStats, EpisodePuller, all_stats, argv, csv, csv_encoder, debug, elasticsearch, end_date, ep_end, ep_puller, ep_search_body, ep_start, es, fs, scpr_es, start_date, tz, zone,
+var AllStats, EpisodePuller, all_stats, argv, csv, csv_encoder, debug, elasticsearch, end_date, ep_puller, ep_search_body, es, fs, scpr_es, start_date, tz, via, zone,
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
 
@@ -15,19 +15,20 @@ debug = require("debug")("scpr");
 argv = require('yargs').demand(['show', 'start', 'end']).describe({
   start: "Start Date",
   end: "End Date",
-  ep_start: "Start Date for Episodes",
-  ep_end: "End Date for Episodes",
+  show: "Show slug",
+  hours: "Number of Hours for Each Episode",
   zone: "Timezone",
   verbose: "Show Debugging Logs",
-  sessions: "Use Sessions (UUID)"
-}).boolean(["verbose", "sessions"])["default"]({
+  sessions: "Use Sessions (UUID)",
+  type: "Listening Type (podcast or ondemand)",
+  lidx: "Listening Index Prefix"
+}).boolean(["verbose", "sessions"]).help("help")["default"]({
   sessions: true,
   verbose: false,
-  start: null,
-  end: null,
-  ep_start: null,
-  ep_end: null,
-  zone: "America/Los_Angeles"
+  hours: 72,
+  zone: "America/Los_Angeles",
+  type: "podcast",
+  lidx: "logstash"
 }).argv;
 
 if (argv.verbose) {
@@ -42,67 +43,56 @@ scpr_es = new elasticsearch.Client({
 });
 
 es = new elasticsearch.Client({
-  host: "logstash.i.scprdev.org:9200"
+  host: "es-scpr-logstash.service.consul:9200"
 });
 
 start_date = zone(argv.start, argv.zone);
 
 end_date = zone(argv.end, argv.zone);
 
-ep_start = argv.ep_start ? zone(argv.start, argv.zone) : start_date;
+console.error("Episodes: " + start_date + " - " + end_date);
 
-ep_end = argv.ep_end ? zone(argv.end, argv.zone) : end_date;
-
-console.error("Stats: " + start_date + " - " + end_date);
-
-console.error("Episodes: " + ep_start + " - " + ep_end);
+via = (function() {
+  switch (argv.type) {
+    case "podcast":
+      return ["podcast"];
+    case "ondemand":
+      return ["api", "website", "ondemand"];
+    default:
+      console.error("Invalid type argument.");
+      return process.exit();
+  }
+})();
 
 AllStats = (function(_super) {
   __extends(AllStats, _super);
 
   function AllStats() {
+    var d;
     AllStats.__super__.constructor.call(this, {
       objectMode: true
     });
-    this.stats = [];
-    this.first_date = null;
-    this.last_date = null;
+    this.push(["Episode Date", "Episode Title"].concat((function() {
+      var _i, _ref, _results;
+      _results = [];
+      for (d = _i = 0, _ref = argv.hours; 0 <= _ref ? _i <= _ref : _i >= _ref; d = 0 <= _ref ? ++_i : --_i) {
+        _results.push("Hour " + d);
+      }
+      return _results;
+    })()));
   }
 
-  AllStats.prototype._transform = function(obj, encoding, cb) {
-    this.stats.push(obj);
-    console.error("Stats for " + obj.key + ": ", obj.stats);
-    if (!this.first_date || obj.stats.first_date < this.first_date) {
-      this.first_date = obj.stats.first_date;
+  AllStats.prototype._transform = function(s, encoding, cb) {
+    var k, values, _i, _ref;
+    values = [zone(s.episode.date, "%Y-%m-%d", argv.zone), s.episode.title];
+    for (k = _i = 0, _ref = argv.hours; 0 <= _ref ? _i <= _ref : _i >= _ref; k = 0 <= _ref ? ++_i : --_i) {
+      values.push(s.stats[k] || 0);
     }
-    if (!this.last_date || obj.stats.last_date > this.last_date) {
-      this.last_date = obj.stats.last_date;
-    }
+    this.push(values);
     return cb();
   };
 
   AllStats.prototype._flush = function(cb) {
-    var d, k, keys, s, values, _i, _j, _len, _len1, _ref;
-    keys = [];
-    d = this.first_date;
-    while (true) {
-      keys.push(zone(d, "%Y-%m-%d", argv.zone));
-      d = tz(d, "+1 day");
-      if (d > this.last_date) {
-        break;
-      }
-    }
-    this.push(["key"].concat(keys));
-    _ref = this.stats;
-    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-      s = _ref[_i];
-      values = [s.key];
-      for (_j = 0, _len1 = keys.length; _j < _len1; _j++) {
-        k = keys[_j];
-        values.push(s.stats.days[k] || 0);
-      }
-      this.push(values);
-    }
     return cb();
   };
 
@@ -119,16 +109,15 @@ EpisodePuller = (function(_super) {
     });
   }
 
-  EpisodePuller.prototype._indices = function(ep_date) {
-    var end, idxs, start, ts;
+  EpisodePuller.prototype._indices = function(ep_date, ep_end) {
+    var idxs, ts;
     idxs = [];
-    start = start_date && start_date > ep_date ? start_date : ep_date;
-    end = end_date ? end_date : Number(new Date());
-    ts = start;
+    ts = ep_date;
+    debug("ep_end is ", ep_date, ep_end);
     while (true) {
-      idxs.push("logstash-" + (tz(ts, "%Y.%m.%d")));
+      idxs.push("" + argv.lidx + "-" + (tz(ts, "%Y.%m.%d")));
       ts = tz(ts, "+1 day");
-      if (ts > end) {
+      if (ts > ep_end) {
         break;
       }
     }
@@ -136,9 +125,10 @@ EpisodePuller = (function(_super) {
   };
 
   EpisodePuller.prototype._transform = function(ep, encoding, cb) {
-    var body, ep_date, tz_offset;
+    var body, ep_date, ep_end, tz_offset;
     debug("Processing " + ep.date);
     ep_date = zone(ep.date, argv.zone);
+    ep_end = zone(ep_date, "+" + argv.hours + " hour");
     tz_offset = zone(ep_date, "%:z", argv.zone);
     body = {
       query: {
@@ -163,8 +153,8 @@ EpisodePuller = (function(_super) {
               }, {
                 range: {
                   "@timestamp": {
-                    gte: tz(start_date, "%Y-%m-%dT%H:%M"),
-                    lt: tz(end_date, "%Y-%m-%dT%H:%M")
+                    gte: tz(ep_date, "%Y-%m-%dT%H:%M"),
+                    lt: tz(ep_end, "%Y-%m-%dT%H:%M")
                   }
                 }
               }
@@ -177,7 +167,7 @@ EpisodePuller = (function(_super) {
         dates: {
           date_histogram: {
             field: "@timestamp",
-            interval: "1d",
+            interval: "1h",
             time_zone: tz_offset
           },
           aggs: {
@@ -191,30 +181,36 @@ EpisodePuller = (function(_super) {
         }
       }
     };
-    debug("Searching " + ((this._indices(ep_date)).join(",")), JSON.stringify(body));
+    debug("Searching " + ((this._indices(ep_date, ep_end)).join(",")), JSON.stringify(body));
     return es.search({
-      index: this._indices(ep_date),
+      index: this._indices(ep_date, ep_end),
       body: body,
-      type: "nginx"
-    }, function(err, results) {
-      var b, day_key, days, first_date, last_date, ts, _i, _len, _ref, _results;
-      if (err) {
-        console.error("ES ERROR: ", err);
-        return false;
-      }
-      first_date = null;
-      last_date = null;
-      days = {};
-      debug("Results is ", results);
-      _ref = results.aggregations.dates.buckets;
-      _results = [];
-      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-        b = _ref[_i];
-        ts = tz(key);
-        _results.push(day_key = zone(key, "%Y"));
-      }
-      return _results;
-    });
+      type: "nginx",
+      ignoreUnavailable: true
+    }, (function(_this) {
+      return function(err, results) {
+        var b, days, first_date, idx, last_date, stats, _i, _len, _ref, _ref1;
+        if (err) {
+          console.error("ES ERROR: ", err);
+          return false;
+        }
+        first_date = null;
+        last_date = null;
+        days = {};
+        debug("Results is ", results);
+        stats = [];
+        _ref = results.aggregations.dates.buckets;
+        for (idx = _i = 0, _len = _ref.length; _i < _len; idx = ++_i) {
+          b = _ref[idx];
+          stats[idx] = ((_ref1 = b.sessions) != null ? _ref1.value : void 0) || 0;
+        }
+        _this.push({
+          episode: ep,
+          stats: stats
+        });
+        return cb();
+      };
+    })(this));
   };
 
   return EpisodePuller;
@@ -258,8 +254,8 @@ ep_search_body = {
           }, {
             range: {
               public_datetime: {
-                gt: zone(ep_start, "%FT%T%^z"),
-                lt: zone(ep_end, "%FT%T%^z")
+                gt: zone(start_date, "%FT%T%^z"),
+                lt: zone(end_date, "%FT%T%^z")
               }
             }
           }
@@ -293,10 +289,11 @@ scpr_es.search({
     file = e._source.audio[0].url.replace("http://media.scpr.org/audio/", "");
     ep_puller.write({
       date: e._source.public_datetime,
-      file: file
+      file: file,
+      title: e._source.title
     });
   }
   return ep_puller.end();
 });
 
-//# sourceMappingURL=show_episodes.js.map
+//# sourceMappingURL=show_episodes_by_hour.js.map
