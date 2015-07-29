@@ -24,13 +24,15 @@ argv = require('yargs').demand(['start', 'end']).describe({
   verbose: "Show Debugging Logs",
   bots: "Include Known Bot Traffic?",
   ua: "Limit User Agents",
-  prefix: "Index Prefix"
+  prefix: "Index Prefix",
+  size: "Request Size Floor"
 }).boolean(['verbose', 'bots'])["default"]({
   prefix: "logstash",
   verbose: false,
   bots: false,
   type: "podcast",
-  zone: "America/Los_Angeles"
+  zone: "America/Los_Angeles",
+  size: 8192
 }).argv;
 
 if (argv.verbose) {
@@ -87,7 +89,7 @@ DayPuller = (function(_super) {
       }, {
         range: {
           bytes_sent: {
-            gte: 8192
+            gte: argv.size
           }
         }
       }, {

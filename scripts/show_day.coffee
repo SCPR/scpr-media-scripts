@@ -18,6 +18,7 @@ argv = require('yargs')
         bots:       "Include Known Bot Traffic?"
         ua:         "Limit User Agents"
         prefix:     "Index Prefix"
+        size:       "Request Size Floor"
     .boolean(['verbose','bots'])
     .default
         prefix:     "logstash"
@@ -25,6 +26,7 @@ argv = require('yargs')
         bots:       false
         type:       "podcast"
         zone:       "America/Los_Angeles"
+        size:       8192
     .argv
 
 if argv.verbose
@@ -73,7 +75,7 @@ class DayPuller extends require("stream").Transform
         ,
             terms: { qvia: via }
         ,
-            range: { bytes_sent: { gte: 8192 } }
+            range: { bytes_sent: { gte: argv.size } }
         ,
             range:
                 "@timestamp":
