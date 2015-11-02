@@ -17,6 +17,7 @@ argv = require('yargs')
         sessions:   "Use Sessions (UUID)"
         type:       "Listening Type (podcast or ondemand)"
         lidx:       "Listening Index Prefix"
+        size:       "Request Size Floor"
     .boolean(["verbose","sessions"])
     .help("help")
     .default
@@ -26,6 +27,7 @@ argv = require('yargs')
         zone:       "America/Los_Angeles"
         type:       "podcast"
         lidx:       "logstash"
+        size:       102400
     .argv
 
 if argv.verbose
@@ -118,12 +120,14 @@ class EpisodePuller extends require("stream").Transform
                 constant_score:
                     filter:
                         and:[
+                            term: { "nginx_host.raw": "media.scpr.org" }
+                        ,
                             terms:
                                 "response.raw":["200","206"]
                         ,
                             range:
                                 bytes_sent:
-                                    gte: 8193
+                                    gte: argv.size
                         ,
                             terms:
                                 "request_path.raw":["/audio/#{ep.file}","/podcasts/#{ep.file}"]
@@ -145,7 +149,7 @@ class EpisodePuller extends require("stream").Transform
                         sessions:
                             cardinality:
                                 field:                  "quuid.raw"
-                                precision_threshold:    100
+                                precision_threshold:    1000
 
         debug "Searching #{ (@_indices(ep_date,ep_end)).join(",") }", JSON.stringify(body)
 

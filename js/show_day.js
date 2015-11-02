@@ -17,6 +17,7 @@ debug = require("debug")("scpr");
 
 argv = require('yargs').demand(['start', 'end']).describe({
   show: "Show Key (Default is all shows)",
+  exclude: "Show(s) to exclude",
   type: "Listening Type (podcast or ondemand)",
   start: "Start Date",
   end: "End Date",
@@ -25,14 +26,20 @@ argv = require('yargs').demand(['start', 'end']).describe({
   bots: "Include Known Bot Traffic?",
   ua: "Limit User Agents",
   prefix: "Index Prefix",
-  size: "Request Size Floor"
-}).boolean(['verbose', 'bots'])["default"]({
+  size: "Request Size Floor",
+  uuid: "ES Field for UUID",
+  server: "ES Server",
+  untagged: "Include untagged requests?"
+}).boolean(['verbose', 'bots']).help("help")["default"]({
   prefix: "logstash",
   verbose: false,
   bots: false,
   type: "podcast",
   zone: "America/Los_Angeles",
-  size: 8192
+  size: 102400,
+  uuid: "quuid.raw",
+  server: "es-scpr-logstash.service.consul:9200",
+  untagged: false
 }).argv;
 
 if (argv.verbose) {
@@ -43,7 +50,7 @@ if (argv.verbose) {
 zone = tz(require("timezone/" + argv.zone));
 
 es = new elasticsearch.Client({
-  host: "es-scpr-logstash.service.consul:9200"
+  host: argv.server
 });
 
 start_date = zone(argv.start, argv.zone);
@@ -72,7 +79,7 @@ DayPuller = (function(_super) {
   }
 
   DayPuller.prototype._transform = function(date, encoding, cb) {
-    var body, filters, indices, tomorrow;
+    var aggs, body, filters, indices, tomorrow;
     debug("Running " + (zone(date, argv.zone, "%Y.%m.%d")));
     tomorrow = tz(date, "+1 day");
     indices = ["" + argv.prefix + "-" + (zone(date, argv.zone, "%Y.%m.%d")), "" + argv.prefix + "-" + (zone(tomorrow, argv.zone, "%Y.%m.%d"))];
@@ -105,7 +112,21 @@ DayPuller = (function(_super) {
       filters.push({
         not: {
           terms: {
-            "clientip.raw": ["217.156.156.69"]
+            "clientip.raw": ["217.156.156.69", "99.71.133.104", "159.118.124.132", "172.56.30.160"]
+          }
+        }
+      });
+      filters.push({
+        not: {
+          terms: {
+            "agent.raw": ["Python-urllib/2.7"]
+          }
+        }
+      });
+      filters.push({
+        not: {
+          exists: {
+            field: "bot.raw"
           }
         }
       });
@@ -119,10 +140,45 @@ DayPuller = (function(_super) {
     }
     if (argv.show) {
       filters.push({
-        term: {
-          "qcontext.raw": argv.show
+        terms: {
+          "qcontext.raw": argv.show.split(","),
+          execution: "bool"
         }
       });
+    }
+    if (argv.exclude) {
+      filters.push({
+        not: {
+          terms: {
+            "qcontext.raw": argv.exclude.split(","),
+            execution: "bool"
+          }
+        }
+      });
+    }
+    aggs = {
+      show: {
+        terms: {
+          field: "qcontext.raw",
+          size: 20
+        },
+        aggs: {
+          sessions: {
+            cardinality: {
+              field: argv.uuid,
+              precision_threshold: 1000
+            }
+          }
+        }
+      }
+    };
+    if (argv.untagged) {
+      aggs.sessions = {
+        cardinality: {
+          field: argv.uuid,
+          precision_threshold: 1000
+        }
+      };
     }
     body = {
       query: {
@@ -133,40 +189,31 @@ DayPuller = (function(_super) {
         }
       },
       size: 0,
-      aggs: {
-        show: {
-          terms: {
-            field: "qcontext.raw",
-            size: 20
-          },
-          aggs: {
-            sessions: {
-              cardinality: {
-                field: "quuid.raw",
-                precision_threshold: 100
-              }
-            }
-          }
-        }
-      }
+      aggs: aggs
     };
     debug("Body is ", JSON.stringify(body));
     return es.search({
       index: indices,
       type: "nginx",
-      body: body
+      body: body,
+      ignoreUnavailable: true
     }, (function(_this) {
       return function(err, results) {
-        var b, shows, _i, _len, _ref;
+        var b, shows, tagged_total, _i, _len, _ref;
         if (err) {
           throw err;
         }
         debug("Results is ", results);
         shows = {};
+        tagged_total = 0;
         _ref = results.aggregations.show.buckets;
         for (_i = 0, _len = _ref.length; _i < _len; _i++) {
           b = _ref[_i];
           shows[b.key] = b.sessions.value;
+          tagged_total += b.sessions.value;
+        }
+        if (argv.untagged) {
+          shows.untagged = results.aggregations.sessions.value - tagged_total;
         }
         _this.push({
           date: date,

@@ -10,6 +10,7 @@ argv = require('yargs')
     .demand(['start','end'])
     .describe
         show:       "Show Key (Default is all shows)"
+        exclude:    "Show(s) to exclude"
         type:       "Listening Type (podcast or ondemand)"
         start:      "Start Date"
         end:        "End Date"
@@ -19,14 +20,21 @@ argv = require('yargs')
         ua:         "Limit User Agents"
         prefix:     "Index Prefix"
         size:       "Request Size Floor"
+        uuid:       "ES Field for UUID"
+        server:     "ES Server"
+        untagged:   "Include untagged requests?"
     .boolean(['verbose','bots'])
+    .help("help")
     .default
         prefix:     "logstash"
         verbose:    false
         bots:       false
         type:       "podcast"
         zone:       "America/Los_Angeles"
-        size:       8192
+        size:       102400
+        uuid:       "quuid.raw"
+        server:     "es-scpr-logstash.service.consul:9200"
+        untagged:   false
     .argv
 
 if argv.verbose
@@ -35,7 +43,7 @@ if argv.verbose
 
 zone = tz(require("timezone/#{argv.zone}"))
 
-es = new elasticsearch.Client host:"es-scpr-logstash.service.consul:9200"
+es = new elasticsearch.Client host:argv.server
 
 start_date  = zone(argv.start,argv.zone)
 end_date    = zone(argv.end,argv.zone)
@@ -87,7 +95,17 @@ class DayPuller extends require("stream").Transform
             filters.push
                 not:
                     terms:
-                        "clientip.raw": ["217.156.156.69"]
+                        "clientip.raw": ["217.156.156.69","99.71.133.104","159.118.124.132","172.56.30.160"]
+
+            filters.push
+                not:
+                    terms:
+                        "agent.raw": ["Python-urllib/2.7"]
+
+            filters.push
+                not:
+                    exists:
+                        field: "bot.raw"
 
         if argv.ua
             filters.push
@@ -96,7 +114,33 @@ class DayPuller extends require("stream").Transform
 
 
         if argv.show
-            filters.push term:{ "qcontext.raw":argv.show }
+            filters.push terms:
+                "qcontext.raw": argv.show.split(",")
+                execution:      "bool"
+
+        if argv.exclude
+            filters.push
+                not:
+                    terms:
+                        "qcontext.raw": argv.exclude.split(",")
+                        execution:      "bool"
+
+        aggs =
+            show:
+                terms:
+                    field:  "qcontext.raw"
+                    size:   20
+                aggs:
+                    sessions:
+                        cardinality:
+                            field:                  argv.uuid
+                            precision_threshold:    1000
+
+        if argv.untagged
+            aggs.sessions =
+                cardinality:
+                    field:                  argv.uuid
+                    precision_threshold:    1000
 
         body =
             query:
@@ -104,28 +148,26 @@ class DayPuller extends require("stream").Transform
                     filter:
                         and:filters
             size: 0
-            aggs:
-                show:
-                    terms:
-                        field:  "qcontext.raw"
-                        size:   20
-                    aggs:
-                        sessions:
-                            cardinality:
-                                field:                  "quuid.raw"
-                                precision_threshold:    100
+            aggs: aggs
 
         debug "Body is ", JSON.stringify(body)
 
-        es.search index:indices, type:"nginx", body:body, (err,results) =>
+        es.search index:indices, type:"nginx", body:body, ignoreUnavailable:true, (err,results) =>
             if err
                 throw err
 
             debug "Results is ", results
 
             shows = {}
+
+            tagged_total = 0
+
             for b in results.aggregations.show.buckets
                 shows[ b.key ] = b.sessions.value
+                tagged_total += b.sessions.value
+
+            if argv.untagged
+                shows.untagged = results.aggregations.sessions.value - tagged_total
 
             @push date:date, shows:shows
 

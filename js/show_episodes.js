@@ -19,16 +19,19 @@ argv = require('yargs').demand(['show', 'start', 'end']).describe({
   days: "Number of Days for Each Episode",
   zone: "Timezone",
   verbose: "Show Debugging Logs",
-  sessions: "Use Sessions (UUID)",
   type: "Listening Type (podcast or ondemand)",
-  lidx: "Listening Index Prefix"
-}).boolean(["verbose", "sessions"])["default"]({
+  lidx: "Listening Index Prefix",
+  size: "Request Size Floor",
+  uuid: "ES Field for UUID"
+}).boolean(["verbose", "sessions"]).help("help")["default"]({
   sessions: true,
   verbose: false,
   days: 7,
   zone: "America/Los_Angeles",
   type: "podcast",
-  lidx: "logstash"
+  lidx: "logstash",
+  size: 102400,
+  uuid: "quuid.raw"
 }).argv;
 
 if (argv.verbose) {
@@ -142,7 +145,7 @@ EpisodePuller = (function(_super) {
               }, {
                 range: {
                   bytes_sent: {
-                    gte: 8193
+                    gte: argv.size
                   }
                 }
               }, {
@@ -174,7 +177,7 @@ EpisodePuller = (function(_super) {
             sessions: {
               cardinality: {
                 field: "quuid.raw",
-                precision_threshold: 100
+                precision_threshold: 1000
               }
             }
           }
