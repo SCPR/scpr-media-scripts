@@ -26,13 +26,13 @@ argv = require('yargs')
     .boolean(['verbose','bots'])
     .help("help")
     .default
-        prefix:     "logstash"
+        prefix:     "logstash-audio"
         verbose:    false
         bots:       false
         type:       "podcast"
         zone:       "America/Los_Angeles"
-        size:       102400
-        uuid:       "quuid.raw"
+        size:       204800
+        uuid:       "synth_uuid2.raw"
         server:     "es-scpr-logstash.service.consul:9200"
         untagged:   false
     .argv
@@ -95,17 +95,17 @@ class DayPuller extends require("stream").Transform
             filters.push
                 not:
                     terms:
-                        "clientip.raw": ["217.156.156.69","99.71.133.104","159.118.124.132","172.56.30.160"]
+                        "clientip.raw": ["217.156.156.69"]
 
-            filters.push
-                not:
-                    terms:
-                        "agent.raw": ["Python-urllib/2.7"]
+            #filters.push
+            #    not:
+            #        terms:
+            #            "agent.raw": ["Python-urllib/2.7"]
 
             filters.push
                 not:
                     exists:
-                        field: "bot.raw"
+                        field: "bot"
 
         if argv.ua
             filters.push
@@ -209,7 +209,7 @@ ts = start_date
 
 loop
     day_puller.write(ts)
-    ts = tz(ts,"+1 day")
+    ts = zone(ts,argv.zone,"+1 day")
     break if ts >= end_date
 
 day_puller.end()

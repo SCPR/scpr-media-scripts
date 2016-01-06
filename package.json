@@ -1,11 +1,11 @@
 {
   "name": "scpr-media-scripts",
-  "version": "0.2.1",
+  "version": "0.3.0",
   "description": "Pull media stats from Elasticsearch / Logstash",
   "main": "index.js",
   "dependencies": {
     "csv": "^0.4.1",
-    "elasticsearch": "^3.0.1",
+    "elasticsearch": "^8.1.0",
     "timezone": "^0.0.38",
     "yargs": "^3.9.0",
     "underscore": "~1.7.0",

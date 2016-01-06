@@ -26,9 +26,9 @@ argv = require('yargs')
         days:       7
         zone:       "America/Los_Angeles"
         type:       "podcast"
-        lidx:       "logstash"
-        size:       102400
-        uuid:       "quuid.raw"
+        lidx:       "logstash-audio"
+        size:       204800
+        uuid:       "synth_uuid2.raw"
     .argv
 
 if argv.verbose
@@ -229,6 +229,3 @@ scpr_es.search index:"scprv4_production-articles-all", type:"show_episode", body
         ep_puller.write date:e._source.public_datetime, file:file, title:e._source.title
 
     ep_puller.end()
-
-
-

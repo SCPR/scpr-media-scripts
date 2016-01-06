@@ -1,4 +1,4 @@
-var AllStats, EpisodePuller, all_stats, argv, csv, csv_encoder, debug, elasticsearch, end_date, ep_puller, ep_search_body, es, fs, scpr_es, start_date, tz, via, zone,
+var AllStats, EpisodePuller, all_stats, argv, csv, csv_encoder, debug, elasticsearch, end_date, ep_puller, ep_search_body, es, fs, scpr_es, start_date, tz, via, zone, _,
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
 
@@ -9,6 +9,8 @@ csv = require("csv");
 fs = require("fs");
 
 tz = require("timezone");
+
+_ = require("underscore");
 
 debug = require("debug")("scpr");
 
@@ -30,8 +32,8 @@ argv = require('yargs').demand(['show', 'start', 'end']).describe({
   zone: "America/Los_Angeles",
   type: "podcast",
   lidx: "logstash-audio",
-  size: 204800,
-  uuid: "synth_uuid2.raw"
+  size: 102400,
+  uuid: "quuid.raw"
 }).argv;
 
 if (argv.verbose) {
@@ -46,7 +48,7 @@ scpr_es = new elasticsearch.Client({
 });
 
 es = new elasticsearch.Client({
-  host: "es-scpr-logstash.service.consul:9200"
+  host: "192.168.133.25:9200"
 });
 
 start_date = zone(argv.start, argv.zone);
@@ -75,21 +77,24 @@ AllStats = (function(_super) {
     AllStats.__super__.constructor.call(this, {
       objectMode: true
     });
-    this.push(["Episode Date", "Episode Title"].concat((function() {
-      var _i, _ref, _results;
-      _results = [];
-      for (d = _i = 0, _ref = argv.days; 0 <= _ref ? _i <= _ref : _i >= _ref; d = 0 <= _ref ? ++_i : --_i) {
-        _results.push("Day " + (d + 1));
-      }
-      return _results;
-    })()));
+    this.push(_.flatten([
+      "Episode Date", "Episode Title", "Audio Duration", "Audio Size", (function() {
+        var _i, _ref, _results;
+        _results = [];
+        for (d = _i = 0, _ref = argv.days; 0 <= _ref ? _i <= _ref : _i >= _ref; d = 0 <= _ref ? ++_i : --_i) {
+          _results.push(["D" + (d + 1) + " Downloads", "D" + (d + 1) + " Transfer"]);
+        }
+        return _results;
+      })()
+    ]));
   }
 
   AllStats.prototype._transform = function(s, encoding, cb) {
-    var k, values, _i, _ref;
-    values = [zone(s.episode.date, "%Y-%m-%d", argv.zone), s.episode.title];
+    var k, values, _i, _ref, _ref1, _ref2;
+    values = [zone(s.episode.date, "%Y-%m-%d", argv.zone), s.episode.title, s.episode.duration, s.episode.size];
     for (k = _i = 0, _ref = argv.days; 0 <= _ref ? _i <= _ref : _i >= _ref; k = 0 <= _ref ? ++_i : --_i) {
-      values.push(s.stats[k] || 0);
+      values.push(((_ref1 = s.stats[k]) != null ? _ref1.downloads : void 0) || 0);
+      values.push(((_ref2 = s.stats[k]) != null ? _ref2.size : void 0) || 0);
     }
     this.push(values);
     return cb();
@@ -176,8 +181,13 @@ EpisodePuller = (function(_super) {
           aggs: {
             sessions: {
               cardinality: {
-                field: "quuid.raw",
+                field: argv.uuid,
                 precision_threshold: 1000
+              }
+            },
+            total_size: {
+              sum: {
+                field: "bytes_sent"
               }
             }
           }
@@ -192,7 +202,7 @@ EpisodePuller = (function(_super) {
       ignoreUnavailable: true
     }, (function(_this) {
       return function(err, results) {
-        var b, days, first_date, idx, last_date, stats, _i, _len, _ref, _ref1;
+        var b, days, first_date, idx, last_date, stats, _i, _len, _ref, _ref1, _ref2;
         if (err) {
           console.error("ES ERROR: ", err);
           return false;
@@ -205,7 +215,10 @@ EpisodePuller = (function(_super) {
         _ref = results.aggregations.dates.buckets;
         for (idx = _i = 0, _len = _ref.length; _i < _len; idx = ++_i) {
           b = _ref[idx];
-          stats[idx] = ((_ref1 = b.sessions) != null ? _ref1.value : void 0) || 0;
+          stats[idx] = {
+            downloads: ((_ref1 = b.sessions) != null ? _ref1.value : void 0) || 0,
+            size: ((_ref2 = b.total_size) != null ? _ref2.value : void 0) || 0
+          };
         }
         _this.push({
           episode: ep,
@@ -281,7 +294,7 @@ scpr_es.search({
   type: "show_episode",
   body: ep_search_body
 }, function(err, results) {
-  var e, file, _i, _len, _ref;
+  var duration, e, file, size, _i, _len, _ref;
   if (err) {
     throw err;
   }
@@ -290,13 +303,17 @@ scpr_es.search({
   for (_i = 0, _len = _ref.length; _i < _len; _i++) {
     e = _ref[_i];
     file = e._source.audio[0].url.replace("http://media.scpr.org/audio/", "");
+    duration = e._source.audio[0].duration;
+    size = e._source.audio[0].size;
     ep_puller.write({
       date: e._source.public_datetime,
       file: file,
-      title: e._source.title
+      title: e._source.title,
+      duration: duration,
+      size: size
     });
   }
   return ep_puller.end();
 });
 
-//# sourceMappingURL=show_episodes.js.map
+//# sourceMappingURL=show_episodes_duration.js.map
