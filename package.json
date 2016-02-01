@@ -1,6 +1,6 @@
 {
   "name": "scpr-media-scripts",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Pull media stats from Elasticsearch / Logstash",
   "main": "index.js",
   "dependencies": {

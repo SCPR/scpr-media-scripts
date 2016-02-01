@@ -162,7 +162,7 @@ class DayPuller extends require("stream").Transform
 
             tagged_total = 0
 
-            for b in results.aggregations.show.buckets
+            for b in results.aggregations?.show.buckets
                 shows[ b.key ] = b.sessions.value
                 tagged_total += b.sessions.value
 

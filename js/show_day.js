@@ -192,16 +192,16 @@ DayPuller = (function(_super) {
       ignoreUnavailable: true
     }, (function(_this) {
       return function(err, results) {
-        var b, shows, tagged_total, _i, _len, _ref;
+        var b, shows, tagged_total, _i, _len, _ref, _ref1;
         if (err) {
           throw err;
         }
         debug("Results is ", results);
         shows = {};
         tagged_total = 0;
-        _ref = results.aggregations.show.buckets;
-        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-          b = _ref[_i];
+        _ref1 = (_ref = results.aggregations) != null ? _ref.show.buckets : void 0;
+        for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+          b = _ref1[_i];
           shows[b.key] = b.sessions.value;
           tagged_total += b.sessions.value;
         }
