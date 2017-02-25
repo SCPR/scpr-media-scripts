@@ -1,9 +1,7 @@
-var CSVFormatter, DayPuller, argv, csv, day_puller, debug, elasticsearch, end_date, es, fs, start_date, ts, tz, via, zone, _,
+var CSVFormatter, DayPuller, argv, csv, day_puller, debug, end_date, es, fs, start_date, ts, tz, via, zone, _,
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
   __slice = [].slice;
-
-elasticsearch = require("elasticsearch");
 
 csv = require("csv");
 
@@ -14,6 +12,8 @@ tz = require("timezone");
 _ = require("underscore");
 
 debug = require("debug")("scpr");
+
+es = require("./elasticsearch_connections").es_client;
 
 argv = require('yargs').demand(['start', 'end']).describe({
   show: "Show Key (Default is all shows)",
@@ -38,7 +38,7 @@ argv = require('yargs').demand(['start', 'end']).describe({
   zone: "America/Los_Angeles",
   size: 204800,
   uuid: "synth_uuid2.raw",
-  server: "es-scpr-logstash.service.consul:9200",
+  server: es,
   untagged: false
 }).argv;
 
@@ -48,10 +48,6 @@ if (argv.verbose) {
 }
 
 zone = tz(require("timezone/" + argv.zone));
-
-es = new elasticsearch.Client({
-  host: argv.server
-});
 
 start_date = zone(argv.start, argv.zone);
 

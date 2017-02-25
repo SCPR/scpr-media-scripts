@@ -1,10 +1,11 @@
-elasticsearch   = require "elasticsearch"
 csv             = require "csv"
 fs              = require "fs"
 tz              = require "timezone"
 _ = require "underscore"
 
 debug           = require("debug")("scpr")
+
+es = require("./elasticsearch_connections").es_client
 
 argv = require('yargs')
     .demand(['start','end'])
@@ -33,7 +34,7 @@ argv = require('yargs')
         zone:       "America/Los_Angeles"
         size:       204800
         uuid:       "synth_uuid2.raw"
-        server:     "es-scpr-logstash.service.consul:9200"
+        server:     es
         untagged:   false
     .argv
 
@@ -42,8 +43,6 @@ if argv.verbose
     debug = require("debug")("scpr")
 
 zone = tz(require("timezone/#{argv.zone}"))
-
-es = new elasticsearch.Client host:argv.server
 
 start_date  = zone(argv.start,argv.zone)
 end_date    = zone(argv.end,argv.zone)
@@ -66,7 +65,7 @@ class DayPuller extends require("stream").Transform
     _transform: (date,encoding,cb) ->
         debug "Running #{zone(date,argv.zone,"%Y.%m.%d")}"
 
-        # Since our logstash data is stored in indices named via UTC, we
+# Since our logstash data is stored in indices named via UTC, we
         # always want to our date + the next date
 
         tomorrow = tz(date,"+1 day")

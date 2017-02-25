@@ -1,4 +1,3 @@
-elasticsearch   = require "elasticsearch"
 csv             = require "csv"
 fs              = require "fs"
 tz              = require "timezone"
@@ -36,8 +35,8 @@ if argv.verbose
 
 zone = tz(require("timezone/#{argv.zone}"))
 
-scpr_es = new elasticsearch.Client host:"es-scpr-es.service.consul:9200"
-es      = new elasticsearch.Client host:"es-scpr-logstash.service.consul:9200"
+scpr_es = require("./elasticsearch_connections").scpr_es
+es = require("./elasticsearch_connections").es_client
 
 start_date  = zone(argv.start,argv.zone)
 end_date    = zone(argv.end,argv.zone)

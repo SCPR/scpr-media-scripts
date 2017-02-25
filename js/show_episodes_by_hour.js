@@ -41,11 +41,11 @@ if (argv.verbose) {
 zone = tz(require("timezone/" + argv.zone));
 
 scpr_es = new elasticsearch.Client({
-  host: "es-scpr-es.service.consul:9200"
+  host: process.env.ELASTICSEARCH_SERVER
 });
 
 es = new elasticsearch.Client({
-  host: "es-scpr-logstash.service.consul:9200"
+  host: process.env.LOGSTASH_SERVER
 });
 
 start_date = zone(argv.start, argv.zone);

@@ -1,0 +1,10 @@
+{
+  "version": 3,
+  "file": "elasticsearch_connections.js",
+  "sourceRoot": "../scripts/",
+  "sources": [
+    "elasticsearch_connections.coffee"
+  ],
+  "names": [],
+  "mappings": "AAAA,IAAA,aAAA;;AAAA,aAAA,GAAkB,OAAA,CAAQ,eAAR,CAAlB,CAAA;;AAAA,MAEM,CAAC,OAAP,GAAiB;AAAA,EACf,OAAA,EAAa,IAAA,aAAa,CAAC,MAAd,CAAqB;AAAA,IAAA,IAAA,EAAK,OAAO,CAAC,GAAG,CAAC,oBAAjB;GAArB,CADE;AAAA,EAEf,SAAA,EAAe,IAAA,aAAa,CAAC,MAAd,CAAqB;AAAA,IAAA,IAAA,EAAK,OAAO,CAAC,GAAG,CAAC,eAAjB;GAArB,CAFA;CAFjB,CAAA"
+}
