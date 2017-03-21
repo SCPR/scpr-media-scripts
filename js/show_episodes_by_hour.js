@@ -1,8 +1,6 @@
-var AllStats, EpisodePuller, all_stats, argv, csv, csv_encoder, debug, elasticsearch, end_date, ep_puller, ep_search_body, es, fs, scpr_es, start_date, tz, via, zone,
+var AllStats, EpisodePuller, all_stats, argv, csv, csv_encoder, debug, end_date, ep_puller, ep_search_body, es, fs, scpr_es, start_date, tz, via, zone,
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
-
-elasticsearch = require("elasticsearch");
 
 csv = require("csv");
 
@@ -40,13 +38,9 @@ if (argv.verbose) {
 
 zone = tz(require("timezone/" + argv.zone));
 
-scpr_es = new elasticsearch.Client({
-  host: process.env.ELASTICSEARCH_SERVER
-});
+scpr_es = require("./elasticsearch_connections").scpr_es;
 
-es = new elasticsearch.Client({
-  host: process.env.LOGSTASH_SERVER
-});
+es = require("./elasticsearch_connections").es_client;
 
 start_date = zone(argv.start, argv.zone);
 

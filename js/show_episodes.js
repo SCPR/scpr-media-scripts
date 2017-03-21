@@ -144,7 +144,7 @@ EpisodePuller = (function(_super) {
                 }
               }, {
                 terms: {
-                  "request_path.raw": ["/audio/" + ep.file, "/podcasts/" + ep.file],
+                  "request_path.raw": [ep.file],
                   _cache: false
                 }
               }, {
@@ -178,7 +178,7 @@ EpisodePuller = (function(_super) {
         }
       }
     };
-    debug("Searching " + ((this._indices(ep_date, ep_end)).join(",")), JSON.stringify(body));
+    debug("XXXXX Searching " + ((this._indices(ep_date, ep_end)).join(",")), JSON.stringify(body));
     return es.search({
       index: this._indices(ep_date, ep_end),
       body: body,
