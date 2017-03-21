@@ -178,7 +178,7 @@ EpisodePuller = (function(_super) {
         }
       }
     };
-    debug("XXXXX Searching " + ((this._indices(ep_date, ep_end)).join(",")), JSON.stringify(body));
+    debug("Searching " + ((this._indices(ep_date, ep_end)).join(",")), JSON.stringify(body));
     return es.search({
       index: this._indices(ep_date, ep_end),
       body: body,

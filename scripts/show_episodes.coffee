@@ -150,7 +150,7 @@ class EpisodePuller extends require("stream").Transform
                                 field:                  "quuid.raw"
                                 precision_threshold:    1000
 
-        debug "XXXXX Searching #{ (@_indices(ep_date,ep_end)).join(",") }", JSON.stringify(body)
+        debug "Searching #{ (@_indices(ep_date,ep_end)).join(",") }", JSON.stringify(body)
 
         es.search index:@_indices(ep_date,ep_end), body:body, type:"nginx", ignoreUnavailable:true, (err,results) =>
             if err
