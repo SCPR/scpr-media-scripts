@@ -144,7 +144,7 @@ EpisodePuller = (function(_super) {
                 }
               }, {
                 terms: {
-                  "request_path.raw": [ep.file],
+                  "request_path.raw": ["/audio/" + ep.file, "/podcasts/" + ep.file],
                   _cache: false
                 }
               }, {
