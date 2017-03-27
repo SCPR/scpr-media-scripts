@@ -1,6 +1,7 @@
 csv             = require "csv"
 fs              = require "fs"
 tz              = require "timezone"
+moment          = require "moment"
 
 debug           = require("debug")("scpr")
 
@@ -20,6 +21,8 @@ argv = require('yargs')
     .boolean(["verbose","sessions"])
     .help("help")
     .default
+        start: new moment().subtract(1, 'months').date(1)
+        end: new moment().date(1)
         sessions:   true
         verbose:    false
         hours:      72

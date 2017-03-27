@@ -1,4 +1,4 @@
-var CSVFormatter, DayPuller, argv, csv, day_puller, debug, end_date, es, fs, start_date, ts, tz, via, zone, _,
+var CSVFormatter, DayPuller, argv, csv, day_puller, debug, end_date, es, fs, moment, start_date, ts, tz, via, zone, _,
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; },
   __slice = [].slice;
@@ -11,11 +11,13 @@ tz = require("timezone");
 
 _ = require("underscore");
 
+moment = require("moment");
+
 debug = require("debug")("scpr");
 
 es = require("./elasticsearch_connections").es_client;
 
-argv = require('yargs').demand(['start', 'end']).describe({
+argv = require('yargs').describe({
   show: "Show Key (Default is all shows)",
   exclude: "Show(s) to exclude",
   type: "Listening Type (podcast or ondemand)",
@@ -31,6 +33,8 @@ argv = require('yargs').demand(['start', 'end']).describe({
   server: "ES Server",
   untagged: "Include untagged requests?"
 }).boolean(['verbose', 'bots']).help("help")["default"]({
+  start: new moment().subtract(1, 'months').date(1),
+  end: new moment().date(1),
   prefix: "logstash-audio",
   verbose: false,
   bots: false,

@@ -2,13 +2,13 @@ csv             = require "csv"
 fs              = require "fs"
 tz              = require "timezone"
 _ = require "underscore"
+moment          = require "moment"
 
 debug           = require("debug")("scpr")
 
 es = require("./elasticsearch_connections").es_client
 
 argv = require('yargs')
-    .demand(['start','end'])
     .describe
         show:       "Show Key (Default is all shows)"
         exclude:    "Show(s) to exclude"
@@ -27,6 +27,8 @@ argv = require('yargs')
     .boolean(['verbose','bots'])
     .help("help")
     .default
+        start: new moment().subtract(1, 'months').date(1)
+        end: new moment().date(1)
         prefix:     "logstash-audio"
         verbose:    false
         bots:       false

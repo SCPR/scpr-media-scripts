@@ -1,4 +1,4 @@
-var AllStats, EpisodePuller, all_stats, argv, csv, csv_encoder, debug, end_date, ep_puller, ep_search_body, es, fs, scpr_es, start_date, tz, via, zone,
+var AllStats, EpisodePuller, all_stats, argv, csv, csv_encoder, debug, end_date, ep_puller, ep_search_body, es, fs, moment, scpr_es, start_date, tz, via, zone,
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
 
@@ -8,13 +8,15 @@ fs = require("fs");
 
 tz = require("timezone");
 
+moment = require("moment");
+
 debug = require("debug")("scpr");
 
 scpr_es = require("./elasticsearch_connections").scpr_es;
 
 es = require("./elasticsearch_connections").es_client;
 
-argv = require('yargs').demand(['show', 'start', 'end']).describe({
+argv = require('yargs').demand(['show']).describe({
   start: "Start Date",
   end: "End Date",
   show: "Show slug",
@@ -26,9 +28,11 @@ argv = require('yargs').demand(['show', 'start', 'end']).describe({
   size: "Request Size Floor",
   uuid: "ES Field for UUID"
 }).boolean(["verbose", "sessions"]).help("help")["default"]({
+  start: new moment().subtract(1, 'months').date(1),
+  end: new moment().date(1),
   sessions: true,
   verbose: false,
-  days: 7,
+  days: 30,
   zone: "America/Los_Angeles",
   type: "podcast",
   lidx: "logstash-audio",
@@ -76,15 +80,19 @@ AllStats = (function(_super) {
         _results.push("Day " + (d + 1));
       }
       return _results;
-    })()));
+    })()).concat("Month Total"));
   }
 
   AllStats.prototype._transform = function(s, encoding, cb) {
-    var k, values, _i, _ref;
+    var downloadCount, k, monthTotal, values, _i, _ref;
     values = [zone(s.episode.date, "%Y-%m-%d", argv.zone), s.episode.title];
+    monthTotal = 0;
     for (k = _i = 0, _ref = argv.days; 0 <= _ref ? _i <= _ref : _i >= _ref; k = 0 <= _ref ? ++_i : --_i) {
-      values.push(s.stats[k] || 0);
+      downloadCount = s.stats[k] || 0;
+      values.push(downloadCount);
+      monthTotal += downloadCount;
     }
+    values.push(monthTotal);
     this.push(values);
     return cb();
   };
@@ -283,7 +291,7 @@ scpr_es.search({
   _ref = results.hits.hits;
   for (_i = 0, _len = _ref.length; _i < _len; _i++) {
     e = _ref[_i];
-    file = e._source.audio[0].url.replace("http://media.scpr.org/audio/", "");
+    file = e._source.audio[0].url.replace(/http(?:s)?\:\/\/media\.scpr\.org\/audio\//, "");
     ep_puller.write({
       date: e._source.public_datetime,
       file: file,

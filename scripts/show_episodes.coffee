@@ -1,14 +1,14 @@
 csv             = require "csv"
 fs              = require "fs"
 tz              = require "timezone"
-
+moment          = require "moment"
 debug           = require("debug")("scpr")
 scpr_es = require("./elasticsearch_connections").scpr_es
 es = require("./elasticsearch_connections").es_client
 
 
 argv = require('yargs')
-    .demand(['show','start','end'])
+    .demand(['show'])
     .describe
         start:      "Start Date"
         end:        "End Date"
@@ -23,9 +23,11 @@ argv = require('yargs')
     .boolean(["verbose","sessions"])
     .help("help")
     .default
+        start: new moment().subtract(1, 'months').date(1)
+        end: new moment().date(1)
         sessions:   true
         verbose:    false
-        days:       7
+        days:       30
         zone:       "America/Los_Angeles"
         type:       "podcast"
         lidx:       "logstash-audio"
@@ -59,14 +61,18 @@ class AllStats extends require("stream").Transform
     constructor: ->
         super objectMode:true
 
-        @push ["Episode Date","Episode Title"].concat( "Day #{d+1}" for d in [0..argv.days] )
+        @push ["Episode Date","Episode Title"].concat( "Day #{d+1}" for d in [0..argv.days] ).concat("Month Total")
 
     _transform: (s,encoding,cb) ->
         values = [zone(s.episode.date,"%Y-%m-%d",argv.zone),s.episode.title]
+        monthTotal = 0
 
         for k in [0..argv.days]
-            values.push s.stats[k] || 0
+            downloadCount = s.stats[k] || 0
+            values.push downloadCount
+            monthTotal += downloadCount
 
+        values.push monthTotal
         @push values
 
         cb()
@@ -129,7 +135,7 @@ class EpisodePuller extends require("stream").Transform
                                     gte: argv.size
                         ,
                             terms:
-                                "request_path.raw":["/audio/#{ep.file}","/podcasts/#{ep.file}"]
+                                "request_path.raw":["/audio/#{ep.file}", "/podcasts/#{ep.file}"]
                                 _cache: false
                         ,
                             range:
@@ -222,8 +228,7 @@ scpr_es.search index:"scprv4_production-articles-all", type:"show_episode", body
     for e in results.hits.hits
         # Sanitize the audio file path, so that we can support both on-demand
         # and podcast listening
-        file = e._source.audio[0].url.replace("http://media.scpr.org/audio/","")
-
+        file = e._source.audio[0].url.replace(/http(?:s)?\:\/\/media\.scpr\.org\/audio\//,"")
         # Write the episode into the episode puller stream
         ep_puller.write date:e._source.public_datetime, file:file, title:e._source.title
 
