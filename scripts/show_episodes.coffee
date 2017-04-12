@@ -5,6 +5,7 @@ moment          = require "moment"
 debug           = require("debug")("scpr")
 scpr_es = require("./elasticsearch_connections").scpr_es
 es = require("./elasticsearch_connections").es_client
+_ = require "underscore"
 
 
 argv = require('yargs')
@@ -20,11 +21,12 @@ argv = require('yargs')
         lidx:       "Listening Index Prefix"
         size:       "Request Size Floor"
         uuid:       "ES Field for UUID"
+        prefix:     "Index Prefix"
     .boolean(["verbose","sessions"])
     .help("help")
     .default
         start: new moment().subtract(1, 'months').date(1)
-        end: new moment().date(1)
+        end: new moment().date(1).subtract(1, 'day')
         sessions:   true
         verbose:    false
         days:       30
@@ -33,6 +35,7 @@ argv = require('yargs')
         lidx:       "logstash-audio"
         size:       204800
         uuid:       "synth_uuid2.raw"
+        prefix:     "logstash-audio"
     .argv
 
 if argv.verbose
@@ -57,179 +60,152 @@ via = switch argv.type
 
 #----------
 
-class AllStats extends require("stream").Transform
+# Gets all of the episodes for this show and builds a hash so we can match the filename to the episode title
+filenameToEpisode = new Promise (resolve, reject) ->
+    scpr_es_body =
+        query:
+            filtered:
+                query: { match_all:{} }
+                filter: {
+                    and: [
+                        term: { "show.slug": argv.show },
+                    ,
+                        term: { "published": true },
+                    ,
+                        exists: { "field": "audio.url"},
+                    ]
+                }
+        size: 100
+    filename_to_episodes = {}
+    scpr_es.search index:"scprv4_production-articles-all", type:"show_episode", body:scpr_es_body, (err,results) ->
+        throw err if err
+        debug "Got #{ results.hits.hits.length } episodes."
+        for e in results.hits.hits
+            file = e._source.audio[0].url.match(/([^\/]+\.mp3)/)[0]
+            filename_to_episodes[file] = e._source.title || file
+        resolve(filename_to_episodes)
+
+# Gets all of the timeframe's downloads
+class DownloadsPuller extends require("stream").Transform
     constructor: ->
         super objectMode:true
 
-        @push ["Episode Date","Episode Title"].concat( "Day #{d+1}" for d in [0..argv.days] ).concat("Month Total")
+    _indices: (start) ->
+        end = zone(tz(start,"+1 day"), "%Y.%m.%d")
+        start = zone(start, "%Y.%m.%d")
+        return [
+            "#{argv.prefix}-#{start}"
+            "#{argv.prefix}-#{end}"
+        ]
 
-    _transform: (s,encoding,cb) ->
-        values = [zone(s.episode.date,"%Y-%m-%d",argv.zone),s.episode.title]
-        monthTotal = 0
+    _transform: (obj,encoding,cb) ->
+        date = obj.ts
+        filename_to_episodes = obj.filename_to_episodes
+        tomorrow = tz(date,"+1 day")
 
-        for k in [0..argv.days]
-            downloadCount = s.stats[k] || 0
-            values.push downloadCount
-            monthTotal += downloadCount
+        filters =  [
+            term: { "nginx_host.raw": "media.scpr.org" }
+        ,
+            terms: { qvia: via }
+        ,
+        range: { bytes_sent: { gte: argv.size } }
+        ,
+            range:
+                "@timestamp":
+                    gte:    tz(date,"%Y-%m-%dT%H:%M")
+                    lt:     tz(tomorrow,"%Y-%m-%dT%H:%M")
+        ]
 
-        values.push monthTotal
-        @push values
+        filters.push terms:
+            "qcontext.raw": argv.show.split(",")
+            execution:      "bool"
 
-        cb()
-
-    _flush: (cb) ->
-        cb()
-
-
-#----------
-
-# Given an episode, pull stats about its performance across our date range
-
-class EpisodePuller extends require("stream").Transform
-    constructor: ->
-        super objectMode:true
-
-    #----------
-
-    _indices: (ep_date,ep_end) ->
-        idxs = []
-
-        # starting with ep_date or start_date (whichever is later), list each
-        # day for `days` days
-
-        ts = ep_date
-
-        debug "ep_end is ", ep_date,ep_end
-
-        loop
-            idxs.push "#{argv.lidx}-#{tz(ts,"%Y.%m.%d")}"
-            ts = tz(ts,"+1 day")
-            break if ts > ep_end
-
-        return idxs
-
-    #----------
-
-    _transform: (ep,encoding,cb) ->
-
-        # -- prepare our query -- #
-
-        debug "Processing #{ ep.date }"
-
-        ep_date = zone(ep.date,argv.zone)
-
-        ep_end = zone(ep_date,"+#{argv.days} day")
-
-        tz_offset = zone(ep_date,"%:z",argv.zone)
+        aggs =
+            filename:
+                terms:
+                    field:  "request_path.raw"
+                    size:   20
+                aggs:
+                    sessions:
+                        cardinality:
+                            field:                  argv.uuid
+                            precision_threshold:    1000
 
         body =
             query:
                 constant_score:
                     filter:
-                        and:[
-                            terms:
-                                "response.raw":["200","206"]
-                        ,
-                            range:
-                                bytes_sent:
-                                    gte: argv.size
-                        ,
-                            terms:
-                                "request_path.raw":["/audio/#{ep.file}", "/podcasts/#{ep.file}"]
-                                _cache: false
-                        ,
-                            range:
-                                "@timestamp":
-                                    gte:    tz(ep_date,"%Y-%m-%dT%H:%M")
-                                    lt:     tz(ep_end,"%Y-%m-%dT%H:%M")
-                        ]
+                        and: filters
             size: 0
-            aggs:
-                dates:
-                    date_histogram:
-                        field:      "@timestamp"
-                        interval:   "1d"
-                        time_zone:  tz_offset
-                    aggs:
-                        sessions:
-                            cardinality:
-                                field:                  "quuid.raw"
-                                precision_threshold:    1000
+            aggs: aggs
+        debug 'Indices are: ', @_indices(date)
 
-        debug "Searching #{ (@_indices(ep_date,ep_end)).join(",") }", JSON.stringify(body)
-
-        es.search index:@_indices(ep_date,ep_end), body:body, type:"nginx", ignoreUnavailable:true, (err,results) =>
+        es.search index:@_indices(date), type:"nginx", body:body, ignoreUnavailable:true, (err,results) =>
             if err
-                console.error "ES ERROR: ", err
-                return false
-
-            first_date = null
-            last_date = null
-            days = {}
+                throw err
 
             debug "Results is ", results
 
-            stats = []
-            for b,idx in results.aggregations.dates.buckets
-                stats[idx] = b.sessions?.value || 0
+            filenames = {}
 
-            @push episode:ep, stats:stats
+            for b in results.aggregations?.filename.buckets
+                next if !b.key.match(/\/(?:podcasts|audio)\/upload\//)
+                stripped_filename = b.key.match(/([^\/]+\.mp3)/)[0]
+                if stripped_filename
+                    episode = stripped_filename
+                    if filename_to_episodes[stripped_filename]
+                        episode = filename_to_episodes[stripped_filename]
+                    filenames[ episode ] = b.sessions.value
+            debug "date", zone(tz(date), argv.zone, "%Y/%m/%d")
+            @push date:date, filenames: filenames
 
             cb()
 
-#----------
+# Aggregates the downloads, matches it to the episode name, and formats it into rows of episodes and columns of days
+class Aggregator extends require("stream").Transform
+    constructor: ->
+        super objectMode:true
+        @filenames = {}
+        @dates = []
 
-ep_puller = new EpisodePuller
-all_stats = new AllStats
+    _transform: (obj,encoding,cb) ->
+        for filename in Object.keys(obj.filenames)
+            @filenames[filename] = {} if !@filenames[filename]
+            @filenames[filename][obj.date] = 0 if !@filenames[filename][obj.date]
+            @filenames[filename][obj.date] += obj.filenames[filename]
+        @dates.push obj.date
+        cb()
 
-csv_encoder = csv.stringify()
+    _flush: (cb) ->
+        sorted_dates = _.sortBy(@dates)
+        @push ["Filename"].concat(_.map(sorted_dates, (d) -> zone(tz(d), "%Y/%m/%d"))).concat('total')
+        for file in Object.keys(@filenames)
+            row = []
+            total = 0
+            for date in sorted_dates
+                if @filenames[file][date]
+                    row.push @filenames[file][date]
+                    total += @filenames[file][date]
+                else
+                    row.push 0
+            row.push total
+            row.push "\n"
+            @push JSON.stringify(file).concat(',').concat(row)
+        cb()
 
-ep_puller.pipe(all_stats).pipe(csv_encoder).pipe(process.stdout)
-all_stats.once "end", ->
-    setTimeout ->
+downloads_puller = new DownloadsPuller
+aggregator = new Aggregator
+downloads_puller.pipe(aggregator).pipe(csv.stringify()).pipe(process.stdout)
+
+filenameToEpisode.then((filename_to_episodes) ->
+    ts = start_date
+    loop
+        downloads_puller.write(ts: ts, filename_to_episodes: filename_to_episodes)
+        ts = zone(ts,"+1 day")
+        break if ts >= end_date
+
+    downloads_puller.end()
+    aggregator.on "finish", =>
+        debug "Finished"
         process.exit()
-    , 500
-
-# -- What episodes? -- #
-
-# We pull episodes from the SCPRv4 Logstash instance. We're looking for
-# show_episode objects in our date range that are published, have audio,
-# and belong to our show.
-
-# FIXME: If we ever intend to support longer date ranges, we would need to
-# up the size on this or add a scroll
-
-ep_search_body =
-    query:
-        filtered:
-            query: { match_all:{} }
-            filter: {
-                and: [
-                    term: { "show.slug": argv.show },
-                ,
-                    term: { "published": true },
-                ,
-                    exists: { "field": "audio.url"},
-                ,
-                    range: { public_datetime: {
-                        gt: zone(start_date,"%FT%T%^z"),
-                        lt: zone(end_date,"%FT%T%^z")
-                    }}
-                ]
-            }
-    sort: [{public_datetime:{order:"asc"}}],
-    size: 100
-
-scpr_es.search index:"scprv4_production-articles-all", type:"show_episode", body:ep_search_body, (err,results) ->
-    throw err if err
-
-    debug "Got #{ results.hits.hits.length } episodes."
-
-    for e in results.hits.hits
-        # Sanitize the audio file path, so that we can support both on-demand
-        # and podcast listening
-        file = e._source.audio[0].url.replace(/http(?:s)?\:\/\/media\.scpr\.org\/audio\//,"")
-        # Write the episode into the episode puller stream
-        ep_puller.write date:e._source.public_datetime, file:file, title:e._source.title
-
-    ep_puller.end()
+)

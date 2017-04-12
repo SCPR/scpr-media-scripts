@@ -1,4 +1,4 @@
-var AllStats, EpisodePuller, all_stats, argv, csv, csv_encoder, debug, end_date, ep_puller, ep_search_body, es, fs, moment, scpr_es, start_date, tz, via, zone,
+var Aggregator, DownloadsPuller, aggregator, argv, csv, debug, downloads_puller, end_date, es, filenameToEpisode, fs, moment, scpr_es, start_date, tz, via, zone, _,
   __hasProp = {}.hasOwnProperty,
   __extends = function(child, parent) { for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; } function ctor() { this.constructor = child; } ctor.prototype = parent.prototype; child.prototype = new ctor(); child.__super__ = parent.prototype; return child; };
 
@@ -16,6 +16,8 @@ scpr_es = require("./elasticsearch_connections").scpr_es;
 
 es = require("./elasticsearch_connections").es_client;
 
+_ = require("underscore");
+
 argv = require('yargs').demand(['show']).describe({
   start: "Start Date",
   end: "End Date",
@@ -26,10 +28,11 @@ argv = require('yargs').demand(['show']).describe({
   type: "Listening Type (podcast or ondemand)",
   lidx: "Listening Index Prefix",
   size: "Request Size Floor",
-  uuid: "ES Field for UUID"
+  uuid: "ES Field for UUID",
+  prefix: "Index Prefix"
 }).boolean(["verbose", "sessions"]).help("help")["default"]({
   start: new moment().subtract(1, 'months').date(1),
-  end: new moment().date(1),
+  end: new moment().date(1).subtract(1, 'day'),
   sessions: true,
   verbose: false,
   days: 30,
@@ -37,7 +40,8 @@ argv = require('yargs').demand(['show']).describe({
   type: "podcast",
   lidx: "logstash-audio",
   size: 204800,
-  uuid: "synth_uuid2.raw"
+  uuid: "synth_uuid2.raw",
+  prefix: "logstash-audio"
 }).argv;
 
 if (argv.verbose) {
@@ -65,240 +69,262 @@ via = (function() {
   }
 })();
 
-AllStats = (function(_super) {
-  __extends(AllStats, _super);
-
-  function AllStats() {
-    var d;
-    AllStats.__super__.constructor.call(this, {
-      objectMode: true
-    });
-    this.push(["Episode Date", "Episode Title"].concat((function() {
-      var _i, _ref, _results;
-      _results = [];
-      for (d = _i = 0, _ref = argv.days; 0 <= _ref ? _i <= _ref : _i >= _ref; d = 0 <= _ref ? ++_i : --_i) {
-        _results.push("Day " + (d + 1));
-      }
-      return _results;
-    })()).concat("Month Total"));
-  }
-
-  AllStats.prototype._transform = function(s, encoding, cb) {
-    var downloadCount, k, monthTotal, values, _i, _ref;
-    values = [zone(s.episode.date, "%Y-%m-%d", argv.zone), s.episode.title];
-    monthTotal = 0;
-    for (k = _i = 0, _ref = argv.days; 0 <= _ref ? _i <= _ref : _i >= _ref; k = 0 <= _ref ? ++_i : --_i) {
-      downloadCount = s.stats[k] || 0;
-      values.push(downloadCount);
-      monthTotal += downloadCount;
-    }
-    values.push(monthTotal);
-    this.push(values);
-    return cb();
-  };
-
-  AllStats.prototype._flush = function(cb) {
-    return cb();
-  };
-
-  return AllStats;
-
-})(require("stream").Transform);
-
-EpisodePuller = (function(_super) {
-  __extends(EpisodePuller, _super);
-
-  function EpisodePuller() {
-    EpisodePuller.__super__.constructor.call(this, {
-      objectMode: true
-    });
-  }
-
-  EpisodePuller.prototype._indices = function(ep_date, ep_end) {
-    var idxs, ts;
-    idxs = [];
-    ts = ep_date;
-    debug("ep_end is ", ep_date, ep_end);
-    while (true) {
-      idxs.push("" + argv.lidx + "-" + (tz(ts, "%Y.%m.%d")));
-      ts = tz(ts, "+1 day");
-      if (ts > ep_end) {
-        break;
-      }
-    }
-    return idxs;
-  };
-
-  EpisodePuller.prototype._transform = function(ep, encoding, cb) {
-    var body, ep_date, ep_end, tz_offset;
-    debug("Processing " + ep.date);
-    ep_date = zone(ep.date, argv.zone);
-    ep_end = zone(ep_date, "+" + argv.days + " day");
-    tz_offset = zone(ep_date, "%:z", argv.zone);
-    body = {
-      query: {
-        constant_score: {
-          filter: {
-            and: [
-              {
-                terms: {
-                  "response.raw": ["200", "206"]
-                }
-              }, {
-                range: {
-                  bytes_sent: {
-                    gte: argv.size
-                  }
-                }
-              }, {
-                terms: {
-                  "request_path.raw": ["/audio/" + ep.file, "/podcasts/" + ep.file],
-                  _cache: false
-                }
-              }, {
-                range: {
-                  "@timestamp": {
-                    gte: tz(ep_date, "%Y-%m-%dT%H:%M"),
-                    lt: tz(ep_end, "%Y-%m-%dT%H:%M")
-                  }
-                }
+filenameToEpisode = new Promise(function(resolve, reject) {
+  var filename_to_episodes, scpr_es_body;
+  scpr_es_body = {
+    query: {
+      filtered: {
+        query: {
+          match_all: {}
+        },
+        filter: {
+          and: [
+            {
+              term: {
+                "show.slug": argv.show
               }
-            ]
+            }, {
+              term: {
+                "published": true
+              }
+            }, {
+              exists: {
+                "field": "audio.url"
+              }
+            }
+          ]
+        }
+      }
+    },
+    size: 100
+  };
+  filename_to_episodes = {};
+  return scpr_es.search({
+    index: "scprv4_production-articles-all",
+    type: "show_episode",
+    body: scpr_es_body
+  }, function(err, results) {
+    var e, file, _i, _len, _ref;
+    if (err) {
+      throw err;
+    }
+    debug("Got " + results.hits.hits.length + " episodes.");
+    _ref = results.hits.hits;
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      e = _ref[_i];
+      file = e._source.audio[0].url.match(/([^\/]+\.mp3)/)[0];
+      filename_to_episodes[file] = e._source.title || file;
+    }
+    return resolve(filename_to_episodes);
+  });
+});
+
+DownloadsPuller = (function(_super) {
+  __extends(DownloadsPuller, _super);
+
+  function DownloadsPuller() {
+    DownloadsPuller.__super__.constructor.call(this, {
+      objectMode: true
+    });
+  }
+
+  DownloadsPuller.prototype._indices = function(start) {
+    var end;
+    end = zone(tz(start, "+1 day"), "%Y.%m.%d");
+    start = zone(start, "%Y.%m.%d");
+    return ["" + argv.prefix + "-" + start, "" + argv.prefix + "-" + end];
+  };
+
+  DownloadsPuller.prototype._transform = function(obj, encoding, cb) {
+    var aggs, body, date, filename_to_episodes, filters, tomorrow;
+    date = obj.ts;
+    filename_to_episodes = obj.filename_to_episodes;
+    tomorrow = tz(date, "+1 day");
+    filters = [
+      {
+        term: {
+          "nginx_host.raw": "media.scpr.org"
+        }
+      }, {
+        terms: {
+          qvia: via
+        }
+      }, {
+        range: {
+          bytes_sent: {
+            gte: argv.size
           }
         }
-      },
-      size: 0,
-      aggs: {
-        dates: {
-          date_histogram: {
-            field: "@timestamp",
-            interval: "1d",
-            time_zone: tz_offset
-          },
-          aggs: {
-            sessions: {
-              cardinality: {
-                field: "quuid.raw",
-                precision_threshold: 1000
-              }
+      }, {
+        range: {
+          "@timestamp": {
+            gte: tz(date, "%Y-%m-%dT%H:%M"),
+            lt: tz(tomorrow, "%Y-%m-%dT%H:%M")
+          }
+        }
+      }
+    ];
+    filters.push({
+      terms: {
+        "qcontext.raw": argv.show.split(","),
+        execution: "bool"
+      }
+    });
+    aggs = {
+      filename: {
+        terms: {
+          field: "request_path.raw",
+          size: 20
+        },
+        aggs: {
+          sessions: {
+            cardinality: {
+              field: argv.uuid,
+              precision_threshold: 1000
             }
           }
         }
       }
     };
-    debug("Searching " + ((this._indices(ep_date, ep_end)).join(",")), JSON.stringify(body));
+    body = {
+      query: {
+        constant_score: {
+          filter: {
+            and: filters
+          }
+        }
+      },
+      size: 0,
+      aggs: aggs
+    };
+    debug('Indices are: ', this._indices(date));
     return es.search({
-      index: this._indices(ep_date, ep_end),
-      body: body,
+      index: this._indices(date),
       type: "nginx",
+      body: body,
       ignoreUnavailable: true
     }, (function(_this) {
       return function(err, results) {
-        var b, days, first_date, idx, last_date, stats, _i, _len, _ref, _ref1;
+        var b, episode, filenames, stripped_filename, _i, _len, _ref, _ref1;
         if (err) {
-          console.error("ES ERROR: ", err);
-          return false;
+          throw err;
         }
-        first_date = null;
-        last_date = null;
-        days = {};
         debug("Results is ", results);
-        stats = [];
-        _ref = results.aggregations.dates.buckets;
-        for (idx = _i = 0, _len = _ref.length; _i < _len; idx = ++_i) {
-          b = _ref[idx];
-          stats[idx] = ((_ref1 = b.sessions) != null ? _ref1.value : void 0) || 0;
+        filenames = {};
+        _ref1 = (_ref = results.aggregations) != null ? _ref.filename.buckets : void 0;
+        for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+          b = _ref1[_i];
+          if (!b.key.match(/\/(?:podcasts|audio)\/upload\//)) {
+            next;
+          }
+          stripped_filename = b.key.match(/([^\/]+\.mp3)/)[0];
+          if (stripped_filename) {
+            episode = stripped_filename;
+            if (filename_to_episodes[stripped_filename]) {
+              episode = filename_to_episodes[stripped_filename];
+            }
+            filenames[episode] = b.sessions.value;
+          }
         }
+        debug("date", zone(tz(date), argv.zone, "%Y/%m/%d"));
         _this.push({
-          episode: ep,
-          stats: stats
+          date: date,
+          filenames: filenames
         });
         return cb();
       };
     })(this));
   };
 
-  return EpisodePuller;
+  return DownloadsPuller;
 
 })(require("stream").Transform);
 
-ep_puller = new EpisodePuller;
+Aggregator = (function(_super) {
+  __extends(Aggregator, _super);
 
-all_stats = new AllStats;
-
-csv_encoder = csv.stringify();
-
-ep_puller.pipe(all_stats).pipe(csv_encoder).pipe(process.stdout);
-
-all_stats.once("end", function() {
-  return setTimeout(function() {
-    return process.exit();
-  }, 500);
-});
-
-ep_search_body = {
-  query: {
-    filtered: {
-      query: {
-        match_all: {}
-      },
-      filter: {
-        and: [
-          {
-            term: {
-              "show.slug": argv.show
-            }
-          }, {
-            term: {
-              "published": true
-            }
-          }, {
-            exists: {
-              "field": "audio.url"
-            }
-          }, {
-            range: {
-              public_datetime: {
-                gt: zone(start_date, "%FT%T%^z"),
-                lt: zone(end_date, "%FT%T%^z")
-              }
-            }
-          }
-        ]
-      }
-    }
-  },
-  sort: [
-    {
-      public_datetime: {
-        order: "asc"
-      }
-    }
-  ],
-  size: 100
-};
-
-scpr_es.search({
-  index: "scprv4_production-articles-all",
-  type: "show_episode",
-  body: ep_search_body
-}, function(err, results) {
-  var e, file, _i, _len, _ref;
-  if (err) {
-    throw err;
-  }
-  debug("Got " + results.hits.hits.length + " episodes.");
-  _ref = results.hits.hits;
-  for (_i = 0, _len = _ref.length; _i < _len; _i++) {
-    e = _ref[_i];
-    file = e._source.audio[0].url.replace(/http(?:s)?\:\/\/media\.scpr\.org\/audio\//, "");
-    ep_puller.write({
-      date: e._source.public_datetime,
-      file: file,
-      title: e._source.title
+  function Aggregator() {
+    Aggregator.__super__.constructor.call(this, {
+      objectMode: true
     });
+    this.filenames = {};
+    this.dates = [];
   }
-  return ep_puller.end();
+
+  Aggregator.prototype._transform = function(obj, encoding, cb) {
+    var filename, _i, _len, _ref;
+    _ref = Object.keys(obj.filenames);
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      filename = _ref[_i];
+      if (!this.filenames[filename]) {
+        this.filenames[filename] = {};
+      }
+      if (!this.filenames[filename][obj.date]) {
+        this.filenames[filename][obj.date] = 0;
+      }
+      this.filenames[filename][obj.date] += obj.filenames[filename];
+    }
+    this.dates.push(obj.date);
+    return cb();
+  };
+
+  Aggregator.prototype._flush = function(cb) {
+    var date, file, row, sorted_dates, total, _i, _j, _len, _len1, _ref;
+    sorted_dates = _.sortBy(this.dates);
+    this.push(["Filename"].concat(_.map(sorted_dates, function(d) {
+      return zone(tz(d), "%Y/%m/%d");
+    })).concat('total'));
+    _ref = Object.keys(this.filenames);
+    for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+      file = _ref[_i];
+      row = [];
+      total = 0;
+      for (_j = 0, _len1 = sorted_dates.length; _j < _len1; _j++) {
+        date = sorted_dates[_j];
+        if (this.filenames[file][date]) {
+          row.push(this.filenames[file][date]);
+          total += this.filenames[file][date];
+        } else {
+          row.push(0);
+        }
+      }
+      row.push(total);
+      row.push("\n");
+      this.push(JSON.stringify(file).concat(',').concat(row));
+    }
+    return cb();
+  };
+
+  return Aggregator;
+
+})(require("stream").Transform);
+
+downloads_puller = new DownloadsPuller;
+
+aggregator = new Aggregator;
+
+downloads_puller.pipe(aggregator).pipe(csv.stringify()).pipe(process.stdout);
+
+filenameToEpisode.then(function(filename_to_episodes) {
+  var ts;
+  ts = start_date;
+  while (true) {
+    downloads_puller.write({
+      ts: ts,
+      filename_to_episodes: filename_to_episodes
+    });
+    ts = zone(ts, "+1 day");
+    if (ts >= end_date) {
+      break;
+    }
+  }
+  downloads_puller.end();
+  return aggregator.on("finish", (function(_this) {
+    return function() {
+      debug("Finished");
+      return process.exit();
+    };
+  })(this));
 });
 
 //# sourceMappingURL=show_episodes.js.map

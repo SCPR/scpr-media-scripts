@@ -78,7 +78,6 @@ class DayPuller extends require("stream").Transform
         ]
 
         debug "Indices is ", indices
-
         filters = [
             term: { "nginx_host.raw": "media.scpr.org" }
         ,
@@ -97,12 +96,6 @@ class DayPuller extends require("stream").Transform
                 not:
                     terms:
                         "clientip.raw": ["217.156.156.69"]
-
-            #filters.push
-            #    not:
-            #        terms:
-            #            "agent.raw": ["Python-urllib/2.7"]
-
             filters.push
                 not:
                     exists:
