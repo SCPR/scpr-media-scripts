@@ -214,7 +214,7 @@ DownloadsPuller = (function(_super) {
         _ref1 = (_ref = results.aggregations) != null ? _ref.filename.buckets : void 0;
         for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
           b = _ref1[_i];
-          if (!b.key.match(/\/(?:podcasts|audio)\/upload\//)) {
+          if (!b.key.match(/\/(?:podcasts|audio)\//)) {
             break;
           }
           stripped_filename = b.key.match(/([^\/]+\.mp3)/)[0];
