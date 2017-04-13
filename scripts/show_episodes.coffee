@@ -149,7 +149,7 @@ class DownloadsPuller extends require("stream").Transform
             filenames = {}
 
             for b in results.aggregations?.filename.buckets
-                next if !b.key.match(/\/(?:podcasts|audio)\/upload\//)
+                break if !b.key.match(/\/(?:podcasts|audio)\/upload\//)
                 stripped_filename = b.key.match(/([^\/]+\.mp3)/)[0]
                 if stripped_filename
                     episode = stripped_filename
