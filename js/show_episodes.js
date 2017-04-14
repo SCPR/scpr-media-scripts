@@ -31,7 +31,7 @@ argv = require('yargs').demand(['show']).describe({
   uuid: "ES Field for UUID",
   prefix: "Index Prefix"
 }).boolean(["verbose", "sessions"]).help("help")["default"]({
-  start: new moment().subtract(1, 'months').date(1),
+  start: new moment().subtract(1, 'months').date(0),
   end: new moment().date(1).subtract(1, 'day'),
   sessions: true,
   verbose: false,
