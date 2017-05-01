@@ -28,7 +28,7 @@ argv = require('yargs')
     .help("help")
     .default
         start: new moment().subtract(1, 'months').date(1)
-        end: new moment().date(1)
+        end: new moment().date(1).subtract(1, 'day')
         prefix:     "logstash-audio"
         verbose:    false
         bots:       false

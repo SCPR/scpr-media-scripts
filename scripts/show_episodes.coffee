@@ -198,7 +198,7 @@ aggregator = new Aggregator
 downloads_puller.pipe(aggregator).pipe(csv.stringify()).pipe(process.stdout)
 
 filenameToEpisode.then((filename_to_episodes) ->
-    ts = start_date
+    ts = zone(start_date, "+1 day")
     loop
         downloads_puller.write(ts: ts, filename_to_episodes: filename_to_episodes)
         ts = zone(ts,"+1 day")

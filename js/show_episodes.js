@@ -307,7 +307,7 @@ downloads_puller.pipe(aggregator).pipe(csv.stringify()).pipe(process.stdout);
 
 filenameToEpisode.then(function(filename_to_episodes) {
   var ts;
-  ts = start_date;
+  ts = zone(start_date, "+1 day");
   while (true) {
     downloads_puller.write({
       ts: ts,
