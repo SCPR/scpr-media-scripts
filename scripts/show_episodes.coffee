@@ -90,12 +90,12 @@ class DownloadsPuller extends require("stream").Transform
     constructor: ->
         super objectMode:true
 
-    _indices: (start) ->
-        end = zone(tz(start,"+1 day"), "%Y.%m.%d")
-        start = zone(start, "%Y.%m.%d")
+    _indices: (date) ->
+        tomorrow = tz(date,"+1 day")
+
         return [
-            "#{argv.prefix}-#{start}"
-            "#{argv.prefix}-#{end}"
+            "#{argv.prefix}-#{zone(date,argv.zone,"%Y.%m.%d")}",
+            "#{argv.prefix}-#{zone(tomorrow,argv.zone,"%Y.%m.%d")}"
         ]
 
     _transform: (obj,encoding,cb) ->
@@ -120,11 +120,20 @@ class DownloadsPuller extends require("stream").Transform
             "qcontext.raw": argv.show.split(",")
             execution:      "bool"
 
+        filters.push
+            not:
+                terms:
+                    "clientip.raw": ["217.156.156.69"]
+        filters.push
+            not:
+                exists:
+                    field: "bot"
+
         aggs =
             filename:
                 terms:
                     field:  "request_path.raw"
-                    size:   20
+                    size:   80
                 aggs:
                     sessions:
                         cardinality:
@@ -139,6 +148,7 @@ class DownloadsPuller extends require("stream").Transform
             size: 0
             aggs: aggs
         debug 'Indices are: ', @_indices(date)
+        debug "Body is ", JSON.stringify(body)
 
         es.search index:@_indices(date), type:"nginx", body:body, ignoreUnavailable:true, (err,results) =>
             if err
@@ -155,8 +165,10 @@ class DownloadsPuller extends require("stream").Transform
                     episode = stripped_filename
                     if filename_to_episodes[stripped_filename]
                         episode = filename_to_episodes[stripped_filename]
-                    filenames[ episode ] = b.sessions.value
-            debug "date", zone(tz(date), argv.zone, "%Y/%m/%d")
+                    if filenames[episode]
+                        filenames[episode] = filenames[episode] + parseInt(b.sessions.value, 10)
+                    else
+                        filenames[episode] = parseInt(b.sessions.value, 10)
             @push date:date, filenames: filenames
 
             cb()
@@ -198,10 +210,10 @@ aggregator = new Aggregator
 downloads_puller.pipe(aggregator).pipe(csv.stringify()).pipe(process.stdout)
 
 filenameToEpisode.then((filename_to_episodes) ->
-    ts = zone(start_date, "+1 day")
+    ts = zone(start_date)
     loop
         downloads_puller.write(ts: ts, filename_to_episodes: filename_to_episodes)
-        ts = zone(ts,"+1 day")
+        ts = zone(ts,argv.zone,"+1 day")
         break if ts >= end_date
 
     downloads_puller.end()

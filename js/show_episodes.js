@@ -128,11 +128,10 @@ DownloadsPuller = (function(_super) {
     });
   }
 
-  DownloadsPuller.prototype._indices = function(start) {
-    var end;
-    end = zone(tz(start, "+1 day"), "%Y.%m.%d");
-    start = zone(start, "%Y.%m.%d");
-    return ["" + argv.prefix + "-" + start, "" + argv.prefix + "-" + end];
+  DownloadsPuller.prototype._indices = function(date) {
+    var tomorrow;
+    tomorrow = tz(date, "+1 day");
+    return ["" + argv.prefix + "-" + (zone(date, argv.zone, "%Y.%m.%d")), "" + argv.prefix + "-" + (zone(tomorrow, argv.zone, "%Y.%m.%d"))];
   };
 
   DownloadsPuller.prototype._transform = function(obj, encoding, cb) {
@@ -170,11 +169,25 @@ DownloadsPuller = (function(_super) {
         execution: "bool"
       }
     });
+    filters.push({
+      not: {
+        terms: {
+          "clientip.raw": ["217.156.156.69"]
+        }
+      }
+    });
+    filters.push({
+      not: {
+        exists: {
+          field: "bot"
+        }
+      }
+    });
     aggs = {
       filename: {
         terms: {
           field: "request_path.raw",
-          size: 20
+          size: 80
         },
         aggs: {
           sessions: {
@@ -198,6 +211,7 @@ DownloadsPuller = (function(_super) {
       aggs: aggs
     };
     debug('Indices are: ', this._indices(date));
+    debug("Body is ", JSON.stringify(body));
     return es.search({
       index: this._indices(date),
       type: "nginx",
@@ -223,10 +237,13 @@ DownloadsPuller = (function(_super) {
             if (filename_to_episodes[stripped_filename]) {
               episode = filename_to_episodes[stripped_filename];
             }
-            filenames[episode] = b.sessions.value;
+            if (filenames[episode]) {
+              filenames[episode] = filenames[episode] + parseInt(b.sessions.value, 10);
+            } else {
+              filenames[episode] = parseInt(b.sessions.value, 10);
+            }
           }
         }
-        debug("date", zone(tz(date), argv.zone, "%Y/%m/%d"));
         _this.push({
           date: date,
           filenames: filenames
@@ -307,13 +324,13 @@ downloads_puller.pipe(aggregator).pipe(csv.stringify()).pipe(process.stdout);
 
 filenameToEpisode.then(function(filename_to_episodes) {
   var ts;
-  ts = zone(start_date, "+1 day");
+  ts = zone(start_date);
   while (true) {
     downloads_puller.write({
       ts: ts,
       filename_to_episodes: filename_to_episodes
     });
-    ts = zone(ts, "+1 day");
+    ts = zone(ts, argv.zone, "+1 day");
     if (ts >= end_date) {
       break;
     }

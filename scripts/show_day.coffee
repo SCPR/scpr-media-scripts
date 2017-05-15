@@ -67,9 +67,6 @@ class DayPuller extends require("stream").Transform
     _transform: (date,encoding,cb) ->
         debug "Running #{zone(date,argv.zone,"%Y.%m.%d")}"
 
-# Since our logstash data is stored in indices named via UTC, we
-        # always want to our date + the next date
-
         tomorrow = tz(date,"+1 day")
 
         indices = [
