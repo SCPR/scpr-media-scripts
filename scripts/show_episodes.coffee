@@ -157,18 +157,18 @@ class DownloadsPuller extends require("stream").Transform
             debug "Results is ", results
 
             filenames = {}
-
-            for b in results.aggregations?.filename.buckets
-                break if !b.key.match(/\/(?:podcasts|audio)\//)
-                stripped_filename = b.key.match(/([^\/]+\.mp3)/)[0]
-                if stripped_filename
-                    episode = stripped_filename
-                    if filename_to_episodes[stripped_filename]
-                        episode = filename_to_episodes[stripped_filename]
-                    if filenames[episode]
-                        filenames[episode] = filenames[episode] + parseInt(b.sessions.value, 10)
-                    else
-                        filenames[episode] = parseInt(b.sessions.value, 10)
+            if results.aggregations?.filename.buckets
+                for b in results.aggregations?.filename.buckets
+                    break if !b.key.match(/\/(?:podcasts|audio)\//)
+                    stripped_filename = b.key.match(/([^\/]+\.mp3)/)[0]
+                    if stripped_filename
+                        episode = stripped_filename
+                        if filename_to_episodes[stripped_filename]
+                            episode = filename_to_episodes[stripped_filename]
+                        if filenames[episode]
+                            filenames[episode] = filenames[episode] + parseInt(b.sessions.value, 10)
+                        else
+                            filenames[episode] = parseInt(b.sessions.value, 10)
             @push date:date, filenames: filenames
 
             cb()

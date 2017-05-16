@@ -219,28 +219,30 @@ DownloadsPuller = (function(_super) {
       ignoreUnavailable: true
     }, (function(_this) {
       return function(err, results) {
-        var b, episode, filenames, stripped_filename, _i, _len, _ref, _ref1;
+        var b, episode, filenames, stripped_filename, _i, _len, _ref, _ref1, _ref2;
         if (err) {
           throw err;
         }
         debug("Results is ", results);
         filenames = {};
-        _ref1 = (_ref = results.aggregations) != null ? _ref.filename.buckets : void 0;
-        for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
-          b = _ref1[_i];
-          if (!b.key.match(/\/(?:podcasts|audio)\//)) {
-            break;
-          }
-          stripped_filename = b.key.match(/([^\/]+\.mp3)/)[0];
-          if (stripped_filename) {
-            episode = stripped_filename;
-            if (filename_to_episodes[stripped_filename]) {
-              episode = filename_to_episodes[stripped_filename];
+        if ((_ref = results.aggregations) != null ? _ref.filename.buckets : void 0) {
+          _ref2 = (_ref1 = results.aggregations) != null ? _ref1.filename.buckets : void 0;
+          for (_i = 0, _len = _ref2.length; _i < _len; _i++) {
+            b = _ref2[_i];
+            if (!b.key.match(/\/(?:podcasts|audio)\//)) {
+              break;
             }
-            if (filenames[episode]) {
-              filenames[episode] = filenames[episode] + parseInt(b.sessions.value, 10);
-            } else {
-              filenames[episode] = parseInt(b.sessions.value, 10);
+            stripped_filename = b.key.match(/([^\/]+\.mp3)/)[0];
+            if (stripped_filename) {
+              episode = stripped_filename;
+              if (filename_to_episodes[stripped_filename]) {
+                episode = filename_to_episodes[stripped_filename];
+              }
+              if (filenames[episode]) {
+                filenames[episode] = filenames[episode] + parseInt(b.sessions.value, 10);
+              } else {
+                filenames[episode] = parseInt(b.sessions.value, 10);
+              }
             }
           }
         }
