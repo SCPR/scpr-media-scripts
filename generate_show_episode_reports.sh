@@ -4,16 +4,16 @@ SHOWS=(the-mash-up-americans airtalk filmweek filmweek-marquee the-brood offramp
 
 for i in "$@"
 do
-	case $i in
-		--start=*)
-		START="--start ${i#*=}"
-		shift
-		;;
-		--end=*)
-		END="--end ${i#*=}"
-		shift
-		;;
-	esac
+    case $i in
+        --start=*)
+        START="--start ${i#*=}"
+        shift
+        ;;
+        --end=*)
+        END="--end ${i#*=}"
+        shift
+        ;;
+    esac
 done
 
 START=${START- ``}
@@ -21,5 +21,5 @@ END=${END- ``}
 
 for SHOW in "${SHOWS[@]}"
 do
-    ./runner-show-episodes --show $SHOW --verbose $START $END> ~/Desktop/$SHOW.csv
+    $RUNNER_SCRIPT --show $SHOW --verbose $START $END> $REPORTS_DIR/$SHOW.csv
 done
