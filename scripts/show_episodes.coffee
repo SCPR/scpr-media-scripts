@@ -25,8 +25,8 @@ argv = require('yargs')
     .boolean(["verbose","sessions"])
     .help("help")
     .default
-        start: new moment().subtract(1, 'months').date(0)
-        end: new moment().date(1).subtract(1, 'day')
+        start: new moment().subtract(1, 'months').date(0).set({hour:0,minute:0,second:0,millisecond:0})
+        end: new moment().date(1).subtract(1, 'day').set({hour:0,minute:0,second:0,millisecond:0})
         sessions:   true
         verbose:    false
         days:       30

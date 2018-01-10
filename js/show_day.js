@@ -33,8 +33,18 @@ argv = require('yargs').describe({
   server: "ES Server",
   untagged: "Include untagged requests?"
 }).boolean(['verbose', 'bots']).help("help")["default"]({
-  start: new moment().subtract(1, 'months').date(1),
-  end: new moment().date(1).subtract(1, 'day'),
+  start: new moment().subtract(1, 'months').date(1).set({
+    hour: 0,
+    minute: 0,
+    second: 0,
+    millisecond: 0
+  }),
+  end: new moment().date(1).subtract(1, 'day').set({
+    hour: 0,
+    minute: 0,
+    second: 0,
+    millisecond: 0
+  }),
   prefix: "logstash-audio",
   verbose: false,
   bots: false,
