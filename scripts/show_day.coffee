@@ -153,14 +153,15 @@ class DayPuller extends require("stream").Transform
 
             tagged_total = 0
 
-            for b in results.aggregations?.show.buckets
-                shows[ b.key ] = b.sessions.value
-                tagged_total += b.sessions.value
+            if results.aggregations?.show.buckets.length > 0
+                for b in results.aggregations?.show.buckets
+                    shows[ b.key ] = b.sessions.value
+                    tagged_total += b.sessions.value
 
-            if argv.untagged
-                shows.untagged = results.aggregations.sessions.value - tagged_total
+                if argv.untagged
+                    shows.untagged = results.aggregations.sessions.value - tagged_total
 
-            @push date:date, shows:shows
+                @push date:date, shows:shows
 
             cb()
 

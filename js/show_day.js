@@ -202,26 +202,28 @@ DayPuller = (function(_super) {
       ignoreUnavailable: true
     }, (function(_this) {
       return function(err, results) {
-        var b, shows, tagged_total, _i, _len, _ref, _ref1;
+        var b, shows, tagged_total, _i, _len, _ref, _ref1, _ref2;
         if (err) {
           throw err;
         }
         debug("Results is ", results);
         shows = {};
         tagged_total = 0;
-        _ref1 = (_ref = results.aggregations) != null ? _ref.show.buckets : void 0;
-        for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
-          b = _ref1[_i];
-          shows[b.key] = b.sessions.value;
-          tagged_total += b.sessions.value;
+        if (((_ref = results.aggregations) != null ? _ref.show.buckets.length : void 0) > 0) {
+          _ref2 = (_ref1 = results.aggregations) != null ? _ref1.show.buckets : void 0;
+          for (_i = 0, _len = _ref2.length; _i < _len; _i++) {
+            b = _ref2[_i];
+            shows[b.key] = b.sessions.value;
+            tagged_total += b.sessions.value;
+          }
+          if (argv.untagged) {
+            shows.untagged = results.aggregations.sessions.value - tagged_total;
+          }
+          _this.push({
+            date: date,
+            shows: shows
+          });
         }
-        if (argv.untagged) {
-          shows.untagged = results.aggregations.sessions.value - tagged_total;
-        }
-        _this.push({
-          date: date,
-          shows: shows
-        });
         return cb();
       };
     })(this));
